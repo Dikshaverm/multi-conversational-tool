@@ -15,7 +15,7 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 from langgraph.graph import END, START, StateGraph
 
 from domains.settings import config_settings
-from domains.retreival.pinecone_doc_retreival.utils import get_related_docs_with_score
+from domains.vector_db.pinecone_utils import get_related_docs_with_score
 from langchain_core.documents import Document
 from domains.retreival.utils import transform_user_query_for_retreival
 

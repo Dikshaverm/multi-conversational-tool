@@ -1,108 +1,218 @@
 # import streamlit as st
-# import requests
-# import tempfile
-# import json
 # import os
-# import base64
-# from pydub import AudioSegment
-# from io import BytesIO
-# import whisper
 #
-# # Load Whisper model once
-# @st.cache_resource
-# def load_whisper_model():
-#     return whisper.load_model("base")
+# from domains.injestion.routes import injest_doc
+# from domains.agents.routes import react_orchestrator
+# from domains.retreival.routes import run_rag
 #
-# whisper_model = load_whisper_model()
+# st.header("Multi Conversational Tool")
+# st.markdown("---")
 #
-# # Backend FastAPI server URL
-# FASTAPI_URL = "http://localhost:8081"
+# # Set the page title and layout
+# # This sets the title of the page and the layout
 #
-# # Function to transcribe audio using Whisper
-# def transcribe_audio(file_bytes, file_ext):
-#     with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_ext}") as temp_audio:
-#         temp_audio.write(file_bytes)
-#         temp_audio_path = temp_audio.name
 #
-#     result = whisper_model.transcribe(temp_audio_path)
-#     return result["text"]
+# def upload_and_deleted():
+#     """
+#     Uploads a file to the server and deletes it after processing.
+#     """
+#     uploaded_file = st.file_uploader("Upload a file", type=["pdf", "txt", "docx"])
+#     if uploaded_file is not None:
+#         # Save the file to a temporary location
+#         temp_file_path = os.path.join("temp", uploaded_file.name)
+#         with open(temp_file_path, "wb") as f:
+#             f.write(uploaded_file.getbuffer())
+#         st.success("File uploaded successfully!")
 #
-# # Function to call the RAG WebSocket API
-# # def run_rag(question, namespace="default", language="en", chat_context=[]):
-# #     import websocket
-# #     ws = websocket.create_connection(f"{FASTAPI_URL}/ws/run_rag")
-# #     payload = json.dumps({
-# #         "language": language,
-# #         "chat_context": chat_context,
-# #         "namespace": namespace,
-# #         "question": question
-# #     })
-# #     ws.send(payload)
-# #     response = ws.recv()
-# #     ws.close()
-# #     return json.loads(response)
+#         return temp_file_path
 #
-# # Function to call the Agent API
-# def run_agents(query, thread_id):
-#     response = requests.get(f"{FASTAPI_URL}/run_agents", params={"query": query, "thread_id": thread_id})
-#     return response.json()
+#         # # Delete the file after processing
+#         # os.remove(temp_file_path)
+#         # st.success("File deleted successfully!")
+#         # # Set the page title and layout
+#         # st.set_page_config(
+#         #     page_title="Multi Conversational Tool",
+#         #     page_layout="wide",
+#         #     initial_sidebar_state="expanded",
+#         #     layout="centered",
+#         # )
 #
-# # Streamlit App
-# st.set_page_config(page_title="Voice-Enabled Chatbot", layout="wide")
-# st.title("🎙️ Voice-Enabled Chatbot")
+# st.set_page_config(
+#     page_title="Multi Conversational Tool",
+#     initial_sidebar_state="expanded",
+#     layout="centered",
+# )
 #
-# mode = st.sidebar.radio("Select Input Mode:", ["Text", "Voice"])
-# query = ""
+# # Set the page title and layout
+# st.title("Multi Conversational Tool")
 #
-# if mode == "Text":
-#     query = st.text_input("Enter your query:")
+# upload_and_deleted()
 #
-# elif mode == "Voice":
-#     audio_file = st.file_uploader("Upload an audio file", type=["wav", "mp3", "m4a"])
-#     if audio_file is not None:
-#         file_bytes = audio_file.read()
-#         file_ext = audio_file.name.split(".")[-1]
-#         with st.spinner("Transcribing using Whisper model..."):
-#             query = transcribe_audio(file_bytes, file_ext)
-#         st.success("Transcription complete!")
-#         st.write("**Transcribed Text:**", query)
 #
-# # Process input
-# if st.button("Get Response") and query:
-#     with st.spinner("Running agent-based reasoning..."):
-#         response = run_agents(query, thread_id="1234")
-#         st.write("### Response:")
-#         st.write(response.get("result", "No response received"))
 
-
+# app.py
 import streamlit as st
-import requests
-import json
+import os
+from pathlib import Path
+import uuid
+from dotenv import load_dotenv
+from typing import Optional
+import time
+from datetime import datetime
 
-# Backend FastAPI server URL
-FASTAPI_URL = "http://localhost:8081"
+load_dotenv()
+
+from domains.injestion.models import InjestRequestDto
+from domains.injestion.routes import injest_doc
+from domains.agents.routes import react_orchestrator
+from domains.retreival.routes import run_rag
+from pathlib import Path
+
+# Session state initialization
+if 'user' not in st.session_state:
+    st.session_state.user = None
+if 'role' not in st.session_state:
+    st.session_state.role = None
+if 'chat_mode' not in st.session_state:
+    st.session_state.chat_mode = 'agent'  # or 'streaming'
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
 
 
-# Function to call the Agent API
-def run_agents(query, thread_id):
-    response = requests.get(f"{FASTAPI_URL}/run_agents", params={"query": query, "thread_id": thread_id})
-    return response.json()
+def login():
+    st.title("Login")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    if st.button("Login"):
+        # Simplified login logic - replace with proper authentication
+        if username == "admin" and password == "admin":
+            st.session_state.user = username
+            st.session_state.role = "admin"
+            st.rerun()
+        elif username == "user" and password == "user":
+            st.session_state.user = username
+            st.session_state.role = "user"
+            st.rerun()
+        else:
+            st.error("Invalid credentials")
 
-# Streamlit App
-st.set_page_config(page_title="Voice-Enabled Chatbot", layout="wide")
-st.title("💬 Chatbot Interface")
 
-mode = st.sidebar.radio("Select Input Mode:", ["Text"], index=0)
-query = ""
+def upload_files():
+    uploaded_files = st.file_uploader("Upload documents",
+                                      type=["pdf", "txt", "docx"],
+                                      accept_multiple_files=True)
 
-if mode == "Text":
-    query = st.text_input("Enter your query:")
+    if uploaded_files:
+        for file in uploaded_files:
+            file_path = Path("temp") / file.name
+            file_path.parent.mkdir(exist_ok=True)
 
-# Voice upload section removed for this version
+            # Save file
+            with open(file_path, "wb") as f:
+                f.write(file.getbuffer())
 
-# Process input
-if st.button("Get Response") and query:
-    with st.spinner("Running agent-based reasoning..."):
-        response = run_agents(query, thread_id="1234")
-        st.write("### Response:")
-        st.write(response.get("result", "No response received"))
+            # Prepare ingestion request
+            request = InjestRequestDto(
+                request_id=int(uuid.uuid4()),
+                pre_signed_url=Path(file_path),
+                file_name=file.name,
+                original_file_name=file.name,
+                file_type=file.name.split('.')[-1],
+                namespace=st.session_state.user,  # Use username as namespace
+                response_data_api_path="/status"  # Placeholder status endpoint
+            )
+
+            try:
+                # Attempt ingestion
+                response = injest_doc(request=request, background_tasks=None)
+
+                if response:
+                    st.success(f"File {file.name} uploaded and ingestion started")
+
+                    # Poll for ingestion status
+                    max_retries = 3
+                    retry_count = 0
+
+                    while retry_count < max_retries:
+                        time.sleep(2)  # Wait before checking status
+                        # Replace with actual status check
+                        ingestion_complete = True  # Placeholder
+
+                        if ingestion_complete:
+                            break
+                        retry_count += 1
+
+                    if retry_count == max_retries:
+                        st.warning(f"Ingestion status unknown for {file.name}")
+
+            except Exception as e:
+                st.error(f"Failed to ingest {file.name}: {str(e)}")
+                # Implement retry logic here
+
+            finally:
+                # Cleanup temp file
+                if file_path.exists():
+                    file_path.unlink()
+
+
+def chat_interface():
+    st.sidebar.title("Chat Settings")
+    st.session_state.chat_mode = st.sidebar.selectbox(
+        "Select Chat Mode",
+        ["Agent-based RAG", "Streaming RAG"]
+    )
+
+    # Chat interface
+    st.title("Chat with Documents")
+
+    # Display chat history
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+
+    # Chat input
+    if prompt := st.chat_input("Ask a question about your documents"):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+
+        try:
+            if st.session_state.chat_mode == "Agent-based RAG":
+                response = react_orchestrator(prompt, str(uuid.uuid4()))
+            else:
+                response = run_rag(
+                    question=prompt,
+                    language="en",
+                    namespace=st.session_state.user
+                )
+
+            st.session_state.messages.append({"role": "assistant", "content": response})
+
+        except Exception as e:
+            st.error(f"Error processing request: {str(e)}")
+
+
+def main():
+    st.set_page_config(
+        page_title="Document Chat System",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+
+    if not st.session_state.user:
+        login()
+    else:
+        st.sidebar.title(f"Welcome {st.session_state.user}")
+        if st.sidebar.button("Logout"):
+            st.session_state.clear()
+            st.rerun()
+
+        tab1, tab2 = st.tabs(["Upload Documents", "Chat"])
+
+        with tab1:
+            upload_files()
+
+        with tab2:
+            chat_interface()
+
+
+if __name__ == "__main__":
+    main()

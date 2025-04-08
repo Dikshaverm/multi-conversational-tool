@@ -21,7 +21,6 @@ router = APIRouter(tags=["injestion"])
 def injest_doc(
     request: InjestRequestDto,
     background_tasks: BackgroundTasks,
-    # token: str = Header(alias="Authorization"),
 ) -> FileInjestionResponseDto:
     logger.info(f"injest-doc request: {request.model_dump_json()}")
     try:

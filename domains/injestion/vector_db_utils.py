@@ -45,6 +45,7 @@ def validate_and_create_index(
         pc = initialize_pinecone()
         indexes = [index.get("name", None) for index in pc.list_indexes()]
 
+        logger.info(f"Existing indexes: {indexes}")
         def create_index(index_name: str) -> None:
             try:
                 pc.create_index(

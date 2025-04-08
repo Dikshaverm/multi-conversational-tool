@@ -13,7 +13,7 @@ from domains.retreival.utils import (
     transform_user_query_for_retreival,
     get_chat_model_with_streaming,
 )
-from domains.retreival.pinecone_doc_retreival.utils import get_related_docs_without_context
+from domains.vector_db.pinecone_utils import get_related_docs_without_context
 from domains.retreival.initialize_memory import initialise_memory_from_chat_context
 from domains.settings import config_settings
 from domains.retreival.models import RagUseCase, RAGGenerationResponse, Message
