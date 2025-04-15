@@ -1,7 +1,7 @@
 import requests
 from loguru import logger
 
-from domains.models import  RequestStatus
+from domains.models import RequestStatusEnum, RequestStatus
 from domains.settings import config_settings
 
 

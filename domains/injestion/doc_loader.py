@@ -7,6 +7,7 @@ from langchain_community.document_loaders import (
     UnstructuredWordDocumentLoader
 )
 
+from pathlib import Path
 from loguru import logger
 from langchain_core.document_loaders import BaseLoader
 from langchain_core.documents import Document
@@ -30,7 +31,7 @@ class URLDownloaderMixin:
 
     def __init__(self, file_path=None, *args: Any, **kwargs: Any) -> None:
         self._temp_file: IO[bytes] | None = None
-        self.file_path = str(file_path)
+        self.file_path = Path(str(file_path))
         if isinstance(self, PyMuPDFLoader):
             if file_path is None:
                 raise TypeError("string argument file_path is needed for pdf loader")
@@ -60,21 +61,56 @@ class URLDownloaderMixin:
             remove(self._temp_file.name)
 
 
-class PDFLoaderExtended(URLDownloaderMixin, PyMuPDFLoader):
+from langchain_community.document_loaders import PyMuPDFLoader, PyPDFLoader
+from langchain_community.document_loaders.parsers.pdf import PDFMinerParser
+
+from langchain_community.document_loaders import PyPDFLoader
+from typing import Any, List
+from langchain_core.documents import Document
+
+
+class PDFLoaderExtended(PyPDFLoader):
+    """Extended PDF loader with additional functionality."""
+
     def __init__(
             self,
             file_path: str,
-            *,
-            headers: dict[Any, Any] | None = None,
-            extract_images: bool = True,
-            **kwargs: Any,
-    ):
-        super().__init__(
-            file_path=file_path,
-            headers=headers,
-            extract_images=extract_images,
-            **kwargs,
-        )
+            extract_images: bool = False,
+            **kwargs: Any
+    ) -> None:
+        # Convert Path to string if needed
+        self.file_path = str(file_path) if hasattr(file_path, '__fspath__') else file_path
+        super().__init__(self.file_path)
+        self.extract_images = extract_images
+
+    def load(self) -> List[Document]:
+        try:
+            documents = super().load()
+            if not documents:
+                raise ValueError("No documents loaded from PDF")
+            return documents
+        except Exception as e:
+            logger.error(f"Error loading PDF {self.file_path}: {str(e)}")
+            raise
+
+
+# class PDFLoaderExtended(PyMuPDFLoader):
+#     """Extended PDF loader with additional functionality."""
+#
+#     def __init__(self, file_path: str, extract_images: bool = False):
+#         super().__init__(file_path)
+#         self.extract_images = extract_images
+#         self.parser = PDFMinerParser()  # Add the parser attribute
+#
+#     def load(self):
+#         try:
+#             documents = super().load()
+#             if not documents:
+#                 raise ValueError("No documents loaded from PDF")
+#             return documents
+#         except Exception as e:
+#             logger.error(f"Error loading PDF: {e}")
+#             raise
 
 class DocLoaderExtended(URLDownloaderMixin, UnstructuredWordDocumentLoader):
     def __init__(
@@ -162,7 +198,6 @@ def file_loader(
     original_file_name: str,
     file_type: str,
     process_type: str,
-    params: dict[str, Any],
     metadata: list[dict[str, str]] = [{}],
 ) -> Tuple[list[Document], Any]:
 
@@ -180,10 +215,6 @@ def file_loader(
 
     loaded_documents = loader().load()
     logger.info(f"documents loaded {len(loaded_documents)}")
-
-    parsed_documents: list[Document] = []
-    tags = params.get("tags") or []
-    synonyms = params.get("synonyms") or []
 
     parsed_documents = split_text(
         text=loaded_documents,

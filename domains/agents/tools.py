@@ -17,12 +17,15 @@ from langgraph.graph import END, START, StateGraph
 from domains.settings import config_settings
 from domains.vector_db.pinecone_utils import get_related_docs_with_score
 from langchain_core.documents import Document
-from domains.retreival.utils import transform_user_query_for_retreival
+from domains.retreival.utils import transform_user_query_for_retrieval
 
 
-async def qna_tool(request: QueryRequest) -> List[Document]:
+async def qna_tool(
+        question: str,
+        namespace: str = config_settings.PINECONE_DEFAULT_DEV_NAMESPACE,
+) -> List[Document]:
     """
-    Retrieves and filters documents from Pinecone based on relevance score.
+    Retrieves and filters personal data and documents from Pinecone vector database based on relevance score.
 
     Args:
         request (QueryRequest): Contains query and namespace information
@@ -36,19 +39,21 @@ async def qna_tool(request: QueryRequest) -> List[Document]:
     """
     try:
         # Validate input
-        if not request.query or not request.namespace:
+        if not question or not namespace:
             raise ValueError("Invalid request parameters")
 
         # Transform query for optimal retrieval
-        transformed_query = await transform_user_query_for_retreival(request.query)
+        transformed_query = await transform_user_query_for_retrieval(
+            question
+        )
         if not transformed_query:
             logger.warning("Query transformation returned empty result")
-            return []
+            transformed_query = question
 
         # Retrieve documents with scores
         related_docs_with_score = await get_related_docs_with_score(
             index_name=config_settings.PINECONE_INDEX_NAME,
-            namespace=request.namespace,
+            namespace=namespace,
             question=transformed_query,
             total_docs_to_retrieve=config_settings.PINECONE_TOTAL_DOCS_TO_RETRIEVE
         )
@@ -271,8 +276,6 @@ async def orchestrator_agent(query: str) -> str:
     except Exception as e:
         logger.exception("Orchestrator agent failed")
         raise e
-
-
 
 
 if __name__ == "__main__":

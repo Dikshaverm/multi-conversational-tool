@@ -1,218 +1,95 @@
-# import streamlit as st
-# import os
-#
-# from domains.injestion.routes import injest_doc
-# from domains.agents.routes import react_orchestrator
-# from domains.retreival.routes import run_rag
-#
-# st.header("Multi Conversational Tool")
-# st.markdown("---")
-#
-# # Set the page title and layout
-# # This sets the title of the page and the layout
-#
-#
-# def upload_and_deleted():
-#     """
-#     Uploads a file to the server and deletes it after processing.
-#     """
-#     uploaded_file = st.file_uploader("Upload a file", type=["pdf", "txt", "docx"])
-#     if uploaded_file is not None:
-#         # Save the file to a temporary location
-#         temp_file_path = os.path.join("temp", uploaded_file.name)
-#         with open(temp_file_path, "wb") as f:
-#             f.write(uploaded_file.getbuffer())
-#         st.success("File uploaded successfully!")
-#
-#         return temp_file_path
-#
-#         # # Delete the file after processing
-#         # os.remove(temp_file_path)
-#         # st.success("File deleted successfully!")
-#         # # Set the page title and layout
-#         # st.set_page_config(
-#         #     page_title="Multi Conversational Tool",
-#         #     page_layout="wide",
-#         #     initial_sidebar_state="expanded",
-#         #     layout="centered",
-#         # )
-#
-# st.set_page_config(
-#     page_title="Multi Conversational Tool",
-#     initial_sidebar_state="expanded",
-#     layout="centered",
-# )
-#
-# # Set the page title and layout
-# st.title("Multi Conversational Tool")
-#
-# upload_and_deleted()
-#
-#
-
-# app.py
-import streamlit as st
+import base64
 import os
-from pathlib import Path
 import uuid
+import docx
+import io
+
+import streamlit as st
+from domains.injestion.doc_loader import file_loader
 from dotenv import load_dotenv
-from typing import Optional
-import time
-from datetime import datetime
+from domains.injestion.routes import load_file_push_to_db
+from domains.injestion.models import InjestRequestDto
+from domains.agents.routes import react_orchestrator
+from domains.retreival.routes import run_rag
+from domains.settings import config_settings
+from loguru import logger
 
 load_dotenv()
 
-from domains.injestion.models import InjestRequestDto
-from domains.injestion.routes import injest_doc
-from domains.agents.routes import react_orchestrator
-from domains.retreival.routes import run_rag
-from pathlib import Path
-
-# Session state initialization
-if 'user' not in st.session_state:
-    st.session_state.user = None
-if 'role' not in st.session_state:
-    st.session_state.role = None
-if 'chat_mode' not in st.session_state:
-    st.session_state.chat_mode = 'agent'  # or 'streaming'
-if 'messages' not in st.session_state:
-    st.session_state.messages = []
+# Check if the API keys are loaded correctly
+openai_api_key = os.getenv("OPENAI_API_KEY")
+pinecone_api_key = os.getenv("PINECONE_API_KEY")
 
 
-def login():
-    st.title("Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-    if st.button("Login"):
-        # Simplified login logic - replace with proper authentication
-        if username == "admin" and password == "admin":
-            st.session_state.user = username
-            st.session_state.role = "admin"
-            st.rerun()
-        elif username == "user" and password == "user":
-            st.session_state.user = username
-            st.session_state.role = "user"
-            st.rerun()
-        else:
-            st.error("Invalid credentials")
+if not openai_api_key:
+    st.error("OPENAI_API_KEY is not set. Please check your .env file.")
+if not pinecone_api_key:
+    st.error("PINECONE_API_KEY is not set. Please check your .env file.")
 
 
-def upload_files():
-    uploaded_files = st.file_uploader("Upload documents",
-                                      type=["pdf", "txt", "docx"],
-                                      accept_multiple_files=True)
+st.title("RAG with Agents")
+st.header("RAG with Multi-Agentic System")
 
-    if uploaded_files:
-        for file in uploaded_files:
-            file_path = Path("temp") / file.name
-            file_path.parent.mkdir(exist_ok=True)
+st.sidebar.header("Upload Document")
+uploaded_file = st.sidebar.file_uploader("Upload a file", type=["pdf", "docx", "txt"])
 
-            # Save file
-            with open(file_path, "wb") as f:
-                f.write(file.getbuffer())
 
-            # Prepare ingestion request
-            request = InjestRequestDto(
-                request_id=int(uuid.uuid4()),
-                pre_signed_url=Path(file_path),
-                file_name=file.name,
-                original_file_name=file.name,
-                file_type=file.name.split('.')[-1],
-                namespace=st.session_state.user,  # Use username as namespace
-                response_data_api_path="/status"  # Placeholder status endpoint
+if uploaded_file is not None:
+    output_folder_path = os.path.join(os.getcwd(), config_settings.STORAGE_FOLDER_NAME)
+
+    x = [os.remove(f) for f in os.listdir(output_folder_path) if os.path.isfile(f)]
+
+    if not os.path.exists(output_folder_path):
+        os.makedirs(output_folder_path, exist_ok=True)
+
+    output_file_path = os.path.join(output_folder_path, uploaded_file.name)
+
+    with open(output_file_path, "wb") as f:
+        f.write(uploaded_file.getvalue())
+        logger.info(f"File saved to {output_file_path}")
+
+    file_name = uploaded_file.name
+    original_file_name = uploaded_file.name
+    file_type = uploaded_file.type.split("/")[1]
+    process_type = file_type
+    pre_signed_url = output_file_path
+    params = {}
+    metadata = []
+    namespace = config_settings.PINECONE_DEFAULT_DEV_NAMESPACE
+
+    st.sidebar.subheader('Document Preview')
+
+    if file_type == "pdf":
+        base64_pdf=base64.b64encode(uploaded_file.getvalue()).decode("utf-8")
+        pdf_display=f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="350" height="500" type="application/pdf"></iframe>'
+        st.sidebar.markdown(pdf_display, unsafe_allow_html=True)
+
+    elif file_type == "docx":
+        docx = docx.Document(io.BytesIO(uploaded_file.getvalue()))
+        text = '\n'.join([paragraph.text for paragraph in docx.paragraphs])
+        st.sidebar.text(text)
+
+    elif file_type == "txt":
+        text_file_content=uploaded_file.getvalue().decode("utf-8")
+        st.sidebar.text(text_file_content)
+
+    if st.sidebar.button("Injest"):
+        try:
+            response = load_file_push_to_db(
+                request=InjestRequestDto(
+                    request_id=uuid.uuid4().int,
+                    file_name=file_name,
+                    original_file_name=original_file_name,
+                    file_type=file_type,
+                    process_type=process_type,
+                    pre_signed_url=output_file_path,
+                    params=params,
+                    metadata=metadata,
+                    namespace=namespace,
+                    response_data_api_path="/injest-doc"
+                )
             )
 
-            try:
-                # Attempt ingestion
-                response = injest_doc(request=request, background_tasks=None)
-
-                if response:
-                    st.success(f"File {file.name} uploaded and ingestion started")
-
-                    # Poll for ingestion status
-                    max_retries = 3
-                    retry_count = 0
-
-                    while retry_count < max_retries:
-                        time.sleep(2)  # Wait before checking status
-                        # Replace with actual status check
-                        ingestion_complete = True  # Placeholder
-
-                        if ingestion_complete:
-                            break
-                        retry_count += 1
-
-                    if retry_count == max_retries:
-                        st.warning(f"Ingestion status unknown for {file.name}")
-
-            except Exception as e:
-                st.error(f"Failed to ingest {file.name}: {str(e)}")
-                # Implement retry logic here
-
-            finally:
-                # Cleanup temp file
-                if file_path.exists():
-                    file_path.unlink()
-
-
-def chat_interface():
-    st.sidebar.title("Chat Settings")
-    st.session_state.chat_mode = st.sidebar.selectbox(
-        "Select Chat Mode",
-        ["Agent-based RAG", "Streaming RAG"]
-    )
-
-    # Chat interface
-    st.title("Chat with Documents")
-
-    # Display chat history
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.write(message["content"])
-
-    # Chat input
-    if prompt := st.chat_input("Ask a question about your documents"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-
-        try:
-            if st.session_state.chat_mode == "Agent-based RAG":
-                response = react_orchestrator(prompt, str(uuid.uuid4()))
-            else:
-                response = run_rag(
-                    question=prompt,
-                    language="en",
-                    namespace=st.session_state.user
-                )
-
-            st.session_state.messages.append({"role": "assistant", "content": response})
-
+            st.sidebar.success("File loaded successfully")
         except Exception as e:
-            st.error(f"Error processing request: {str(e)}")
-
-
-def main():
-    st.set_page_config(
-        page_title="Document Chat System",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-
-    if not st.session_state.user:
-        login()
-    else:
-        st.sidebar.title(f"Welcome {st.session_state.user}")
-        if st.sidebar.button("Logout"):
-            st.session_state.clear()
-            st.rerun()
-
-        tab1, tab2 = st.tabs(["Upload Documents", "Chat"])
-
-        with tab1:
-            upload_files()
-
-        with tab2:
-            chat_interface()
-
-
-if __name__ == "__main__":
-    main()
+            st.sidebar.error(f"Failed to load file: {e}")

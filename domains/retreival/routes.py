@@ -1,18 +1,21 @@
-from enum import Enum
-from typing import List, Optional, Tuple, Any
 import asyncio
+import streamlit as st
+
+from typing import List, Optional, Tuple, Any
 from fastapi import WebSocket, HTTPException, status
-from pydantic import BaseModel, Field
 from loguru import logger
+
+
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain.prompts import PromptTemplate
 
+from domains import retreival
 from domains.retreival.rag_util import send_message_over_websocket
 from domains.retreival.utils import (
-    transform_user_query_for_retreival,
     get_chat_model_with_streaming,
 )
+from domains.retreival.utils import transform_user_query_for_retrieval
 from domains.vector_db.pinecone_utils import get_related_docs_without_context
 from domains.retreival.initialize_memory import initialise_memory_from_chat_context
 from domains.settings import config_settings
@@ -22,7 +25,21 @@ from domains.retreival.prompts import (
     PROMPT_SUFFIX,
     initialise_doc_search_prompt_template,
 )
-from domains import retreival
+
+
+class RAGError(Exception):
+    """Base exception for RAG-related errors"""
+    pass
+
+
+class WebSocketConnectionError(RAGError):
+    """Raised when WebSocket communication fails"""
+    pass
+
+
+class DocumentRetrievalError(RAGError):
+    """Raised when document retrieval fails"""
+    pass
 
 
 class RAGError(Exception):
@@ -113,19 +130,23 @@ async def rag_with_streaming(
             )
 
         # Get optimized retrieval query
-        retreival_query = await transform_user_query_for_retreival(
-            question, "OPTIMIZED_QUESTION_MODEL"
+        retreival_query = await transform_user_query_for_retrieval(
+            question,
+            "OPTIMIZED_QUESTION_MODEL",
+            memory.buffer_as_str,
         )
+
+        st.markdown(f"**Transformed user query for vector search {retreival_query}**")
 
         if not retreival_query or retreival_query == "None":
             logger.warning("Empty retrieval query")
-            return RAGGenerationResponse(answer="")
+            retreival_query = question
 
         # Retrieve related documents
         related_docs = await get_related_docs_without_context(
-            index_name,
-            namespace,
-            retreival_query,
+            index_name=index_name,
+            namespace=namespace,
+            question=retreival_query,
         )
 
         logger.debug(f"Retrieved {len(related_docs)} documents")
@@ -204,20 +225,21 @@ async def run_doc_retrieval_flow(
 
         llm = get_chat_model_with_streaming(
             websocket,
-            model_key=config_settings.LLMS.get("OPENAI_CHAT")
         )
         if not llm:
             raise ValueError("Failed to initialize language model")
 
         llm_chain = prompt_template_ask_question | llm | StrOutputParser()
 
-        response = await llm_chain.ainvoke({
-            "question": optimised_question,
-            "chat_history": memory.buffer_as_str,
-            "doc_count": str(document_count),
-            "context": related_docs_with_score,
-            "language": language
-        })
+        response = await llm_chain.ainvoke(
+            {
+                "question": optimised_question,
+                "chat_history": memory.buffer_as_str,
+                "doc_count": str(document_count),
+                "context": related_docs_with_score,
+                "language": language
+            }
+        )
 
         return RAGGenerationResponse(answer=response)
 

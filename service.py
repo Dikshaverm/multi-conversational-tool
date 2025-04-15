@@ -1,6 +1,9 @@
 import fastapi
 import loguru
 import uvicorn
+
+from fastapi import Query, UploadFile, File
+from domains.agents.routes import router as agents_router
 from fastapi import WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from langchain.vectorstores.base import VectorStore
@@ -11,11 +14,9 @@ from domains.retreival.routes import run_rag, RagUseCase, Message
 from domains.agents.routes import react_orchestrator
 from loguru import logger
 
-import whisper
 app = fastapi.FastAPI()
 vectorstore: Optional[VectorStore] = None
 
-whisper_model = whisper.load_model("base")
 
 # Add CORS Middleware
 app.add_middleware(
@@ -27,7 +28,6 @@ app.add_middleware(
     expose_headers=["Sec-WebSocket-Accept"],  # Ensure WebSocket headers are exposed
 )
 
-from domains.agents.routes import router as agents_router
 
 # Include other API routes
 app.include_router(
@@ -41,22 +41,6 @@ app.include_router(
     prefix="/agents",
 )
 
-from fastapi import  Query, UploadFile, File
-
-
-@app.post("/transcribe_audio")
-async def transcribe_audio(file: UploadFile = File(...)):
-    """Endpoint to transcribe audio to text using Whisper."""
-    try:
-        audio_bytes = await file.read()
-        with open("temp_audio.wav", "wb") as f:
-            f.write(audio_bytes)
-
-        result = whisper_model.transcribe("temp_audio.wav")
-        return {"transcription": result["text"]}
-    except Exception as e:
-        logger.exception("Error transcribing audio")
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/run_agents")
 async def get_run_agents(
@@ -65,7 +49,10 @@ async def get_run_agents(
 ):
     """GET API endpoint for running agents."""
     try:
-        result = await react_orchestrator(query=query, id=thread_id)
+        result = await react_orchestrator(
+            query=query,
+            id=thread_id,
+        )
         return {"result": result}
     except Exception as e:
         logger.exception("Error running agents")
@@ -95,4 +82,8 @@ async def websocket_run_rag(websocket: WebSocket):
 
 
 if __name__ == "__main__":
-    uvicorn.run("service:app", host="0.0.0.0", port=8081)
+    uvicorn.run(
+        "service:app",
+        host="localhost",
+        port=8081
+    )
