@@ -11,7 +11,6 @@ FILE_TYPE = [
     "docx"
 ]
 
-#Purpose: Represents the response of a file ingestion process.
 class FileInjestionResponseDto(RequestStatus):
     file_path: Optional[str] = None
     file_name: Optional[str] = None

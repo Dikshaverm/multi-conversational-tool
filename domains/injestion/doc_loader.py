@@ -7,6 +7,12 @@ from langchain_community.document_loaders import (
     UnstructuredWordDocumentLoader
 )
 
+from langchain_community.document_loaders import PyMuPDFLoader, PyPDFLoader
+
+from langchain_community.document_loaders import PyPDFLoader
+from typing import Any, List
+from langchain_core.documents import Document
+
 from pathlib import Path
 from loguru import logger
 from langchain_core.document_loaders import BaseLoader
@@ -61,14 +67,6 @@ class URLDownloaderMixin:
             remove(self._temp_file.name)
 
 
-from langchain_community.document_loaders import PyMuPDFLoader, PyPDFLoader
-from langchain_community.document_loaders.parsers.pdf import PDFMinerParser
-
-from langchain_community.document_loaders import PyPDFLoader
-from typing import Any, List
-from langchain_core.documents import Document
-
-
 class PDFLoaderExtended(PyPDFLoader):
     """Extended PDF loader with additional functionality."""
 
@@ -112,36 +110,33 @@ class PDFLoaderExtended(PyPDFLoader):
 #             logger.error(f"Error loading PDF: {e}")
 #             raise
 
+
 class DocLoaderExtended(URLDownloaderMixin, UnstructuredWordDocumentLoader):
     def __init__(
             self,
-            file_path: str,
+            file_path: str | Path,
             *,
             headers: dict[Any, Any] | None = None,
             mode: str = "single",
             **unstructured_kwargs: Any,
     ):
-        URLDownloaderMixin.__init__(self, file_path)
-        self.file_path = self.file_path
+        # Convert Path to string if needed
+        self.file_path = str(file_path) if hasattr(file_path, '__fspath__') else file_path
+        URLDownloaderMixin.__init__(self, self.file_path)
+        UnstructuredWordDocumentLoader.__init__(
+            self,
+            file_path=self.file_path,
+            **unstructured_kwargs
+        )
         self.mode = mode
         self.unstructured_kwargs = unstructured_kwargs or {}
-
-        if self.mode == "single":
-            self.strategy = "fast"
-        if self.mode == "elements":
-            self.strategy = "accurate"
-
+        self.strategy = "fast" if self.mode == "single" else "accurate"
         self.unstructured_kwargs["strategy"] = self.strategy
-        self.post_processors = []
-        self.languages = None
-        self.include_metadata = True
-        self.metadata_filename = None
-        self.metadata_last_modified = None
 
 
 class FileLoader(BaseLoader):
-    def __init__(self, file_path: str, process_type: str = "text"):
-        self.file_path = file_path
+    def __init__(self, file_path: str, process_type: str = "txt"):
+        self.file_path = str(file_path) if hasattr(file_path, '__fspath__') else file_path
         self.process_type = process_type
         self._validate_process_type()
 
@@ -159,7 +154,7 @@ class FileLoader(BaseLoader):
             logger.info(f"{self.__class__.__name__}.load(): Attempting to load file from {self.file_path}")
             self._validate_file_path()
 
-            if self.process_type == "text":
+            if self.process_type == "txt":
                 text_loader = TextLoader(file_path=self.file_path)
                 file_contents = text_loader.load()
                 logger.info(f"Successfully loaded file from {self.file_path} and total pages in file is {len(file_contents)}")
@@ -205,7 +200,7 @@ def file_loader(
         raise Exception(f"{file_type} is not a supported file type")
 
     loaders: dict[str, Callable[[], BaseLoader]] = {
-        "text": lambda: FileLoader(pre_signed_url, process_type="text"),
+        "txt": lambda: FileLoader(pre_signed_url, process_type="txt"),
         "pdf": lambda: FileLoader(pre_signed_url, process_type="pdf"),
         "docx": lambda: FileLoader(pre_signed_url, process_type="docx"),
     }
@@ -241,3 +236,11 @@ def file_loader(
         }
 
     return parsed_documents, loaded_documents
+
+
+if __name__ == "__main__":
+    # Example usage
+    file_path = str(Path(r"C:\Users\savit\Downloads\technology_environment_topics.docx")) # Replace with your file path
+    process_type = "docx"  # or "txt", "docx"
+    loader = UnstructuredWordDocumentLoader(file_path)
+    documents = loader.load()
