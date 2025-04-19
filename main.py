@@ -7,6 +7,8 @@ import websockets
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 
+import speech_recognition as sr
+
 load_dotenv()
 
 from pathlib import Path
@@ -302,6 +304,25 @@ def upload_files():
                 if file_path.exists():
                     file_path.unlink()
 
+#####speech recognition code
+def record_voice():
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        st.info("Listening... Speak now!")
+        try:
+            audio = recognizer.listen(source, timeout=5)
+            st.info("Processing your voice...")
+            text = recognizer.recognize_google(audio)
+            st.success(f"Recognized Text: {text}")
+            return text
+        except sr.UnknownValueError:
+            st.error("Sorry, could not understand the audio.")
+        except sr.RequestError as e:
+            st.error(f"Could not request results; {e}")
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
+    return None
+#end
 
 async def chat_interface():
     with st.sidebar:
@@ -331,7 +352,69 @@ async def chat_interface():
             st.markdown(f"{'🧑' if message['role'] == 'user' else '🤖'} {message['content']}")
 
     try:
-        if prompt := st.chat_input("Type your question here..."):
+        ##handle voice input
+        # Add a "Speak" button for voice input
+        if st.button("Speak"):
+            voice_query = record_voice()
+            if voice_query:
+                st.session_state.messages.append({"role": "user", "content": voice_query})
+                with st.chat_message("user"):
+                    st.markdown(f"🧑 {voice_query}")
+
+                with st.chat_message("assistant"):
+                    with st.spinner("Thinking..."):
+                        if st.session_state.chat_mode == "Agent-based RAG":
+                            response = await react_orchestrator(
+                                query=voice_query,
+                                namespace=str(st.session_state.user),
+                                id=str(uuid.uuid4()),
+                                language=st.session_state.language,
+                            )
+                            st.markdown(f"🤖 {response}")
+                            st.session_state.messages.append({"role": "assistant", "content": response})
+                        else:
+                            memory_messages = [
+                                Message(
+                                    type="human" if msg["role"] in ("user", "human") else "ai",
+                                    content=msg["content"]
+                                )
+                                for msg in st.session_state.messages[-10:]
+                            ]
+
+                            message_placeholder = st.empty()
+                            full_response = ""
+
+                            async with websockets.connect('ws://localhost:8081/ws/run_rag') as websocket:
+                                await websocket.send(json.dumps({
+                                    "question": voice_query,
+                                    "language": st.session_state.language,
+                                    "namespace": st.session_state.user,
+                                    "chat_context": [m.model_dump() for m in memory_messages]
+                                }))
+
+                                async for message in websocket:
+                                    try:
+                                        data = json.loads(message)
+                                        if data["type"] == "stream":
+                                            full_response += data["message"]
+                                            message_placeholder.markdown(full_response + "▌")
+                                        elif data["type"] == "end":
+                                            message_placeholder.markdown(full_response)
+                                            break
+                                        elif data["type"] == "error":
+                                            raise Exception(data["message"])
+                                    except json.JSONDecodeError:
+                                        continue
+
+                                if full_response:
+                                    st.session_state.messages.append({
+                                        "role": "assistant",
+                                        "content": full_response
+                                    })
+            ## end
+
+        ## handle text here      extra added key="unique_chat_input"
+        if prompt := st.chat_input("Type your question here...", key="unique_chat_input"):
             st.session_state.messages.append({"role": "user", "content": prompt})
             with st.chat_message("user"):
                 st.markdown(f"🧑 {prompt}")
@@ -386,6 +469,7 @@ async def chat_interface():
                                     "role": "assistant",
                                     "content": full_response
                                 })
+
 
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
