@@ -20,7 +20,7 @@ from langchain_core.documents import Document
 from domains.settings import config_settings
 
 from domains.injestion.models import FILE_TYPE
-from langchain.chains import RetrievalQA, LLMChain
+
 from typing import Any, Callable, IO, Dict, Iterator, get_args, Tuple, Callable
 
 from urllib.parse import urlparse

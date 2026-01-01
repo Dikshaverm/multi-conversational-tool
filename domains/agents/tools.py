@@ -10,7 +10,8 @@ from domains.agents.utils import (
     map_summaries
 )
 from domains.agents.models import SummaryState, OverallState, QueryRequest
-from langchain.chains.combine_documents.reduce import acollapse_docs, split_list_of_docs
+from langchain_classic.chains.combine_documents.reduce import acollapse_docs, split_list_of_docs
+
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langgraph.graph import END, START, StateGraph
 
@@ -246,7 +247,7 @@ async def orchestrator_agent(query: str) -> str:
     """
     Orchestrates the workflow based on vector database results.
 
-    - This search the vector database first and if the infromation not found then fetches from internet and summarize them and give the
+    - This search the vector database first and if the infomation not found then fetches from internet and summarize them and give the
     consise summary of the documents.
 
     - All query needs to be handled by this agent.

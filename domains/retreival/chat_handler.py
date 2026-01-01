@@ -3,8 +3,8 @@ import uuid
 import datetime
 from loguru import logger
 from fastapi import WebSocket
-from langchain.callbacks.base import AsyncCallbackHandler
-from langchain.schema.output import LLMResult
+from langchain_core.callbacks import AsyncCallbackHandler
+from langchain_core.outputs import LLMResult
 from langchain_core.messages import BaseMessage
 
 

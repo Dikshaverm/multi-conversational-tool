@@ -1,5 +1,6 @@
-import langchain.output_parsers
-from langchain.prompts import PromptTemplate
+import langchain_core.output_parsers.list
+from langchain_core.output_parsers.list import CommaSeparatedListOutputParser
+from langchain_core.prompts import PromptTemplate
 
 
 def initialise_pre_grounding_prompt_template():
@@ -33,7 +34,7 @@ def initialise_pre_grounding_prompt_template():
     Follow-Up Input: {question}\n
     Standalone Query:"""
 
-    output_parser = langchain.output_parsers.CommaSeparatedListOutputParser()
+    output_parser = langchain_core.output_parsers.list.CommaSeparatedListOutputParser()
     return PromptTemplate(
         template=prompt_template,
         input_variables=["question", "chat_history"],

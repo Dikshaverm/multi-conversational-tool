@@ -1,5 +1,5 @@
 from domains.settings import config_settings
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 
 
 PROMPT_PREFIX_QNA = """You are a professional AI research assistant providing accurate and relevant answers based on the given context. Follow these guidelines:

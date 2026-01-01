@@ -4,7 +4,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import HumanMessage
 
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter
 from typing import List
 from langchain_core.documents import Document
 

@@ -3,7 +3,7 @@ from typing import Optional, List, Any
 from loguru import logger
 
 from langchain_core.output_parsers import StrOutputParser
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from domains.utils import get_chat_model_with_streaming
 from domains.utils import get_chat_model
 

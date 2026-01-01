@@ -1,7 +1,7 @@
 from loguru import logger
 from domains.settings import config_settings
 
-from langchain.memory import ConversationBufferWindowMemory
+from langchain_classic.memory import ConversationBufferWindowMemory
 from langchain_community.chat_message_histories import ChatMessageHistory
 from domains.retreival.models import Message
 from langchain_core.messages import HumanMessage, AIMessage
